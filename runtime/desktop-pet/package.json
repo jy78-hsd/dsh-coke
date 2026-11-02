@@ -1,0 +1,7 @@
+{
+  "name": "coke-desktop-pet",
+  "private": true,
+  "version": "1.0.0",
+  "description": "小猫coke 的桌面窗口（透明 + 置顶 + 无边框），由 dsh-coke 宿主半侧拉起",
+  "main": "main.js"
+}
