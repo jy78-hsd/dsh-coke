@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>自定义装扮 · 小猫coke</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #14171e;
+    color: #e8ecf5;
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .panel { display: flex; flex-direction: column; height: 100%; padding: 16px 18px 14px; gap: 12px; }
+  .head { display: flex; align-items: baseline; gap: 10px; }
+  .head h1 { font-size: 16px; margin: 0; font-weight: 700; }
+  .head span { font-size: 12px; opacity: .6; }
+
+  .row { display: flex; gap: 16px; align-items: flex-start; }
+
+  .tile {
+    width: 148px;
+    height: 148px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.14);
+    background:
+      linear-gradient(45deg, #1b1f27 25%, transparent 25%, transparent 75%, #1b1f27 75%) 0 0/16px 16px,
+      linear-gradient(45deg, #1b1f27 25%, #12151b 25%, #12151b 75%, #1b1f27 75%) 8px 8px/16px 16px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .tile img { max-width: 100%; max-height: 100%; display: block; }
+  .tile .badge {
+    position: absolute; left: 6px; bottom: 6px;
+    font-size: 11px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(10,12,16,.82); border: 1px solid rgba(255,255,255,.16); opacity: .9;
+  }
+
+  .plus {
+    width: 104px;
+    height: 104px;
+    border-radius: 16px;
+    border: 2px dashed rgba(140,200,255,.55);
+    background: rgba(120,200,255,.08);
+    color: #9fd0ff;
+    font-size: 56px;
+    line-height: 1;
+    font-weight: 300;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+  }
+  .plus:hover { background: rgba(120,200,255,.18); border-color: rgba(140,200,255,.9); transform: translateY(-1px); }
+  .plus:active { transform: scale(.97); }
+
+  .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .side p { margin: 0; font-size: 12.5px; line-height: 1.65; opacity: .72; }
+  .side .title { font-size: 13.5px; font-weight: 700; opacity: 1; }
+
+  .status { font-size: 12.5px; line-height: 1.6; min-height: 20px; }
+  .status.ok { color: #8fe0a8; }
+  .status.err { color: #ff9d9d; }
+  .status.busy { color: #9fd0ff; }
+
+  .spacer { flex: 1 1 auto; }
+  .foot { display: flex; gap: 8px; justify-content: flex-end; }
+  button.btn {
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    padding: 7px 16px; border-radius: 9px; cursor: pointer;
+    border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit;
+  }
+  button.btn:hover { border-color: rgba(200,200,200,.6); }
+  button.btn.primary { border-color: rgba(120,200,255,.6); background: rgba(120,200,255,.16); }
+  button.btn:disabled { opacity: .5; cursor: default; }
+
+  /* 警告弹窗 */
+  .mask {
+    position: fixed; inset: 0; background: rgba(6,8,12,.62);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 10;
+  }
+  .mask[hidden] { display: none; }
+  .dialog {
+    width: min(380px, 100%);
+    background: #1b1f27;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 14px;
+    padding: 18px 18px 14px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.55);
+  }
+  .dialog h2 { margin: 0 0 10px; font-size: 14.5px; }
+  .dialog p { margin: 0 0 16px; font-size: 13px; line-height: 1.7; color: #ffd9a8; }
+  .dialog .foot { justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="head">
+    <h1>自定义装扮</h1>
+    <span>换成你自己的绿幕素材</span>
+  </div>
+
+  <div class="row">
+    <div class="tile" id="sampleTile" title="点一下直接用这张示例">
+      <img id="sampleImg" alt="示例绿幕素材">
+      <span class="badge">示例</span>
+    </div>
+    <button class="plus" id="plus" type="button" title="选一张绿幕图片">+</button>
+    <div class="side">
+      <div class="title">点「+」从电脑里选一张图</div>
+      <p>要求：<b>纯绿幕背景</b>（背景是均匀的绿），主体不要带绿边。</p>
+      <p>选完会自动检测：<b>不是绿幕素材就不会被采用</b>，小猫保持原来的样子。</p>
+      <p>左边那张示例可以直接点来用。</p>
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="spacer"></div>
+  <div class="foot">
+    <button class="btn" id="reset" type="button">恢复默认形象</button>
+    <button class="btn primary" id="close" type="button">关闭</button>
+  </div>
+</div>
+
+<div class="mask" id="warnMask" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="warnTitle">
+    <h2 id="warnTitle">注意</h2>
+    <p>上传文件必须是绿幕素材，否则不能上传文件</p>
+    <div class="foot">
+      <button class="btn" id="warnCancel" type="button">取消</button>
+      <button class="btn primary" id="warnOk" type="button">我知道了，去选文件</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="picker" accept="image/*" hidden>
+
+<script>
+(function () {
+  'use strict';
+
+  // 面板同时跑在两种宿主里：
+  //  - Electron 子窗口（file://，有 window.petApi）
+  //  - DSH 页面里的 iframe（http 同源，用 fetch 调宿主路由）
+  var IN_ELECTRON = typeof window.petApi !== 'undefined';
+  var ASSET_BASE = location.protocol === 'file:' ? '../../assets/' : '/dsh-coke/asset/';
+
+  var sampleImg = document.getElementById('sampleImg');
+  var sampleTile = document.getElementById('sampleTile');
+  var plus = document.getElementById('plus');
+  var picker = document.getElementById('picker');
+  var statusEl = document.getElementById('status');
+  var warnMask = document.getElementById('warnMask');
+  var resetBtn = document.getElementById('reset');
+  var closeBtn = document.getElementById('close');
+
+  sampleImg.src = ASSET_BASE + 'outfit-sample.jpg';
+
+  function setStatus(text, kind) {
+    statusEl.textContent = text || '';
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function notify(type, detail) {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ source: 'dsh-coke-outfit', type: type, detail: detail || null }, '*');
+    }
+  }
+
+  // ---------------------------------------------------------------- 绿幕检测
+  // 「系统 AI」：先把图缩到 1024 以内，按「绿通道优势」G - max(R,B) 求每个像素的绿度，
+  // 然后用四条一起判：
+  //   1) 边框（最外 4%）的绿度中位数够高            → 背景是绿的
+  //   2) 边框绿度足够整齐（离散度小）                → 是干净的绿幕，不是绿色物体
+  //   3) 画面内部不能几乎全绿                        → 否则是纯色绿图，没有主体
+  //   4) 主体占一定比例                              → 抠出来不是空图
+  function sampleCanvas(img, maxSide) {
+    var max = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
+    var scale = Math.min(1, maxSide / max);
+    var w = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+    var h = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+    return { canvas: canvas, ctx: ctx, w: w, h: h, data: ctx.getImageData(0, 0, w, h).data };
+  }
+
+  function analyze(img) {
+    var shot = sampleCanvas(img, 1024);
+    var w = shot.w;
+    var h = shot.h;
+    var data = shot.data;
+    var keys = new Float32Array(w * h);
+    var borderBand = Math.max(2, Math.round(Math.min(w, h) * 0.04));
+    var borderKeys = [];
+    var interiorGreen = 0;
+    var interiorCount = 0;
+
+    for (var y = 0; y < h; y += 1) {
+      for (var x = 0; x < w; x += 1) {
+        var i = (y * w + x) * 4;
+        var k = data[i + 1] - Math.max(data[i], data[i + 2]);
+        keys[y * w + x] = k;
+        var onBorder = x < borderBand || y < borderBand || x >= w - borderBand || y >= h - borderBand;
+        if (onBorder) borderKeys.push(k);
+        else {
+          interiorCount += 1;
+          if (k >= 45) interiorGreen += 1;
+        }
+      }
+    }
+
+    borderKeys.sort(function (a, b) { return a - b; });
+    var kBg = borderKeys[Math.floor(borderKeys.length / 2)] || 0;
+    var near = 0;
+    for (var n = 0; n < borderKeys.length; n += 1) if (Math.abs(borderKeys[n] - kBg) <= 22) near += 1;
+    var uniform = near / Math.max(1, borderKeys.length);
+    var interiorRatio = interiorGreen / Math.max(1, interiorCount);
+
+    // 掩膜里主体要占一点，但别是空图
+    var fg = 0;
+    for (var p = 0; p < keys.length; p += 1) if (keys[p] < kBg - 28) fg += 1;
+    var fgRatio = fg / keys.length;
+
+    var reasons = [];
+    if (kBg < 45) reasons.push('背景不够绿（绿度中位数 ' + kBg.toFixed(0) + '，至少要 45）');
+    if (uniform < 0.72) reasons.push('背景颜色不均匀（只有 ' + Math.round(uniform * 100) + '% 接近主色）');
+    if (interiorRatio > 0.9) reasons.push('整张图几乎全是绿色，找不到主体');
+    if (fgRatio < 0.08) reasons.push('抠出来的主体太小');
+
+    return {
+      ok: reasons.length === 0,
+      reasons: reasons,
+      kBg: kBg,
+      uniform: uniform,
+      interiorRatio: interiorRatio,
+      fgRatio: fgRatio,
+      keys: keys,
+      canvas: shot.canvas,
+      data: data,
+      w: w,
+      h: h,
+    };
+  }
+
+  // ---------------------------------------------------------------- 抠图
+  function smoothstep(x, e0, e1) {
+    var t = Math.max(0, Math.min(1, (x - e0) / Math.max(1e-6, e1 - e0)));
+    return t * t * (3 - 2 * t);
+  }
+
+  /** 按检测到的背景绿度做 key + 去溢色 + 裁到内容边界，返回 PNG dataURL。 */
+  function keyOut(info) {
+    var w = info.w;
+    var h = info.h;
+    var src = info.data;
+    var kBg = info.kBg;
+    var t1 = Math.max(18, kBg - 28);
+    var t0 = Math.max(6, kBg - 72);
+
+    var out = new ImageData(w, h);
+    var o = out.data;
+    var minX = w;
+    var minY = h;
+    var maxX = -1;
+    var maxY = -1;
+
+    for (var y = 0; y < h; y += 1) {
+      for (var x = 0; x < w; x += 1) {
+        var i = (y * w + x) * 4;
+        var r = src[i];
+        var g = src[i + 1];
+        var b = src[i + 2];
+        var k = g - Math.max(r, b);
+        var alpha = 1 - smoothstep(k, t0, t1);
+        alpha = Math.max(0, Math.min(1, (alpha - 0.08) / 0.92));
+
+        // 去溢色：绿通道不许高过 R/B 的均值
+        var neutral = (r + b) / 2;
+        if (g > neutral) g = neutral;
+
+        o[i] = r;
+        o[i + 1] = g;
+        o[i + 2] = b;
+        o[i + 3] = Math.round(alpha * 255);
+        if (alpha > 0.12) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX < minX || maxY < minY) return null;
+
+    // 裁到内容边界（留 2px 余量）
+    var pad = 2;
+    var cx = Math.max(0, minX - pad);
+    var cy = Math.max(0, minY - pad);
+    var cw = Math.min(w, maxX + pad + 1) - cx;
+    var ch = Math.min(h, maxY + pad + 1) - cy;
+
+    var full = document.createElement('canvas');
+    full.width = w;
+    full.height = h;
+    full.getContext('2d').putImageData(out, 0, 0);
+
+    var cropped = document.createElement('canvas');
+    cropped.width = cw;
+    cropped.height = ch;
+    cropped.getContext('2d').drawImage(full, cx, cy, cw, ch, 0, 0, cw, ch);
+    return cropped.toDataURL('image/png');
+  }
+
+  // ---------------------------------------------------------------- 保存
+  function saveSkin(dataUrl) {
+    if (IN_ELECTRON && typeof window.petApi.saveSkin === 'function') {
+      return window.petApi.saveSkin(dataUrl);
+    }
+    return fetch('/dsh-coke/skin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: dataUrl,
+    })
+      .then(function (r) { return r.json(); })
+      .catch(function (e) { return { ok: false, message: String(e && e.message ? e.message : e) }; });
+  }
+
+  function resetSkin() {
+    if (IN_ELECTRON && typeof window.petApi.resetSkin === 'function') {
+      return window.petApi.resetSkin();
+    }
+    return fetch('/dsh-coke/skin?reset=1', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .catch(function (e) { return { ok: false, message: String(e && e.message ? e.message : e) }; });
+  }
+
+  /** 处理一张图：检测 → 抠图 → 保存。 */
+  function processImage(img, label) {
+    setStatus('正在检测是不是绿幕素材…', 'busy');
+    var info = analyze(img);
+    if (!info.ok) {
+      setStatus('✗ ' + label + ' 不是合格的绿幕素材：' + info.reasons.join('；') + '。已拒绝，形象保持不变。', 'err');
+      return Promise.resolve({ ok: false });
+    }
+    var dataUrl = keyOut(info);
+    if (!dataUrl) {
+      setStatus('✗ 抠不出主体（整张图都被判成背景），未采用。', 'err');
+      return Promise.resolve({ ok: false });
+    }
+    setStatus('检测通过（背景绿度 ' + Math.round(info.kBg) + '），正在保存…', 'busy');
+    return saveSkin(dataUrl).then(function (result) {
+      if (result && result.ok) {
+        sampleImg.src = dataUrl; // 面板里直接预览新形象
+        setStatus('✓ 已换成新形象（' + label + '）。小猫的其他功能不受影响。', 'ok');
+        notify('skin-saved', { label: label });
+        return { ok: true };
+      }
+      setStatus('✗ 保存失败：' + ((result && result.message) || '未知原因'), 'err');
+      return { ok: false };
+    });
+  }
+
+  function loadImageFromUrl(url) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { reject(new Error('图片读不出来')); };
+      img.src = url;
+    });
+  }
+
+  function loadImageFromFile(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { loadImageFromUrl(String(reader.result)).then(resolve, reject); };
+      reader.onerror = function () { reject(new Error('读取文件失败')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ---------------------------------------------------------------- 交互
+  plus.addEventListener('click', function () {
+    warnMask.hidden = false;
+  });
+  document.getElementById('warnCancel').addEventListener('click', function () {
+    warnMask.hidden = true;
+  });
+  document.getElementById('warnOk').addEventListener('click', function () {
+    warnMask.hidden = true;
+    picker.value = '';
+    picker.click();
+  });
+
+  picker.addEventListener('change', function () {
+    var file = picker.files && picker.files[0];
+    if (!file) return;
+    setStatus('正在读取 ' + file.name + ' …', 'busy');
+    loadImageFromFile(file)
+      .then(function (img) { return processImage(img, file.name); })
+      .catch(function (error) { setStatus('✗ ' + error.message, 'err'); });
+  });
+
+  sampleTile.addEventListener('click', function () {
+    setStatus('正在用示例图生成形象…', 'busy');
+    loadImageFromUrl(ASSET_BASE + 'outfit-sample.jpg')
+      .then(function (img) { return processImage(img, '示例绿幕素材'); })
+      .catch(function (error) { setStatus('✗ ' + error.message, 'err'); });
+  });
+
+  resetBtn.addEventListener('click', function () {
+    setStatus('正在恢复默认形象…', 'busy');
+    resetSkin().then(function (result) {
+      if (result && result.ok) {
+        sampleImg.src = ASSET_BASE + 'outfit-sample.jpg';
+        setStatus('✓ 已恢复默认形象', 'ok');
+        notify('skin-reset');
+      } else {
+        setStatus('✗ 恢复失败：' + ((result && result.message) || '未知原因'), 'err');
+      }
+    });
+  });
+
+  closeBtn.addEventListener('click', function () {
+    notify('close');
+    if (IN_ELECTRON && typeof window.petApi.closePanel === 'function') window.petApi.closePanel();
+    else window.close();
+  });
+
+  // 自测用：把检测函数暴露出去（生产逻辑不依赖它）
+  window.__outfit = { analyze: analyze, keyOut: keyOut, processImage: processImage };
+})();
+</script>
+</body>
+</html>
