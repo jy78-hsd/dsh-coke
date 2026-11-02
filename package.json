@@ -1,0 +1,60 @@
+{
+  "name": "dsh-coke",
+  "version": "0.9.0",
+  "description": "小猫coke：会待在桌面上的猫桌宠。左键点它按权重抽 7 句台词并 Q 弹蹦一下；右键能「对话」（像 dsh-pet 那样在头顶弹输入框，回答用当前模型生成、可选配一张表情包）、「唱歌」、「形态展示」、「自定义装扮」、「枪击小猫」；脚下按钮查 DeepSeek 余额；设置页可切桌面窗口 / 页面内 / 关闭、卸载；默认随 DSH 自动启动。",
+  "icon": "assets/logo.png",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "assets",
+    "runtime",
+    "scripts",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "desktop-pet",
+    "pet",
+    "meme",
+    "balance",
+    "singing",
+    "electron",
+    "coke"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.1.7-rc.2": "incompatible",
+        "0.2.0-rc.1": "compatible",
+        "0.2.0-rc.2": "compatible"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "license": "MIT",
+  "scripts": {
+    "pack": "node scripts/pack.mjs",
+    "publish:npm": "node scripts/publish.mjs"
+  }
+}
