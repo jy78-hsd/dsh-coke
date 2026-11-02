@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>小猫coke</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+  .wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-bottom: 8px;
+    box-sizing: border-box;
+  }
+  /* 气泡挂在猫头顶上方；猫往上跳时锚点跟着抬，脑袋就不会顶穿气泡 */
+  .bubble-anchor {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translate3d(-50%, var(--cc-hop, 0px), 0);
+    z-index: 3;
+    pointer-events: none;
+    will-change: transform;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  /* 聊天回复可选配一张表情包：文字永远有，图是可选的 */
+  .bubble-pic {
+    display: block;
+    width: 132px;
+    height: 132px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .45);
+  }
+  .bubble-pic[hidden] { display: none; }
+  /* 对话输入框：和气泡共用头顶位置 */
+  .input-anchor {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translate3d(-50%, var(--cc-hop, 0px), 0);
+    z-index: 6;
+    -webkit-app-region: no-drag;
+  }
+  .input-anchor[hidden] { display: none; }
+  .input-wrap {
+    padding: 2px;
+    border-radius: 12px;
+    background: rgba(17, 19, 26, .97);
+    border: 1px solid rgba(255, 255, 255, .2);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .55);
+  }
+  .chat-input {
+    display: block;
+    width: 176px;
+    min-height: 30px;
+    max-height: 96px;
+    padding: 6px 9px;
+    border: 0;
+    outline: 0;
+    resize: none;
+    background: transparent;
+    color: #fff;
+    font-family: inherit;
+    font-size: 13.5px;
+    line-height: 1.45;
+  }
+  .bubble {
+    position: relative;
+    transform: translate3d(0, 8px, 0) scale(.94);
+    transform-origin: 50% 100%;
+    width: max-content;
+    max-width: 240px;
+    padding: 9px 14px;
+    border-radius: 15px;
+    background: rgba(17, 19, 26, .95);
+    border: 1px solid rgba(255, 255, 255, .16);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.45;
+    text-align: center;
+    white-space: pre-line;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .16s ease, transform .28s cubic-bezier(.18, 1.5, .42, 1);
+  }
+  .bubble.show { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  .bubble.err { font-size: 13px; color: #ffd7d7; }
+  .bubble::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    margin-top: -4px;
+    background: rgba(17, 19, 26, .95);
+    border-right: 1px solid rgba(255, 255, 255, .16);
+    border-bottom: 1px solid rgba(255, 255, 255, .16);
+    transform: rotate(45deg);
+  }
+
+  .idle { animation: breathe 3.6s ease-in-out infinite; transform-origin: 50% 100%; }
+  @keyframes breathe {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -5px, 0); }
+  }
+
+  .cat {
+    display: block;
+    cursor: grab;
+    transform-origin: 50% 100%;
+    will-change: transform;
+    -webkit-user-drag: none;
+    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .5));
+  }
+  .cat.dragging { cursor: grabbing; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 13px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    background: rgba(22, 25, 33, .85);
+    color: #e8ecf5;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .32);
+    transition: background .18s ease, transform .18s ease, border-color .18s ease;
+  }
+  .pill:hover { background: rgba(38, 44, 58, .95); border-color: rgba(255, 255, 255, .28); }
+  .pill[data-state="ok"] { color: #b9f5cd; border-color: rgba(120, 240, 170, .35); }
+  .pill[data-state="error"] { color: #ffc9c9; border-color: rgba(255, 140, 140, .35); }
+
+  .menu {
+    position: fixed;
+    min-width: 138px;
+    padding: 5px;
+    border-radius: 12px;
+    background: rgba(20, 22, 30, .98);
+    border: 1px solid rgba(255, 255, 255, .16);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, .55);
+  }
+  .menu[hidden] { display: none; }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #eef1f7;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu-item:hover { background: rgba(255, 86, 86, .18); color: #ffd3d3; }
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: #ff6b6b;
+    box-shadow: 0 0 8px rgba(255, 107, 107, .9);
+  }
+  .menu-item.chat .dot { background: #74c0fc; box-shadow: 0 0 8px rgba(116, 192, 252, .9); }
+  .menu-item.chat:hover { background: rgba(116, 192, 252, .18); color: #d0ebff; }
+  .menu-item.sing .dot { background: #ffd166; box-shadow: 0 0 8px rgba(255, 209, 102, .9); }
+  .menu-item.sing:hover { background: rgba(255, 209, 102, .16); color: #ffe6a8; }
+  .menu-item.form .dot { background: #b197fc; box-shadow: 0 0 8px rgba(177, 151, 252, .9); }
+  .menu-item.form:hover { background: rgba(177, 151, 252, .18); color: #e0d6ff; }
+  .menu-item.outfit .dot { background: #8ce99a; box-shadow: 0 0 8px rgba(140, 233, 154, .9); }
+  .menu-item.outfit:hover { background: rgba(140, 233, 154, .16); color: #c6f6d5; }
+
+  /* 形态展示：头顶卡片（图 + 我痞吗），1 分钟后自动收 */
+  .form-anchor {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translate3d(-50%, var(--cc-hop, 0px), 0);
+    z-index: 4;
+    opacity: 0;
+    pointer-events: none;
+    will-change: transform;
+    transition: opacity .18s ease;
+  }
+  .form-anchor.on { opacity: 1; }
+  .form-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 7px 10px;
+    border-radius: 16px;
+    background: rgba(17, 19, 26, .95);
+    border: 1px solid rgba(255, 255, 255, .16);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, .55);
+    transform: translate3d(0, 12px, 0) scale(.88);
+    transform-origin: 50% 100%;
+    transition: transform .32s cubic-bezier(.2, 1.55, .4, 1);
+  }
+  .form-anchor.on .form-card { transform: translate3d(0, 0, 0) scale(1); }
+  .form-card img {
+    display: block;
+    width: 168px;
+    height: 168px;
+    object-fit: cover;
+    border-radius: 11px;
+    background: #0b0d12;
+  }
+  .form-caption { font-size: 13.5px; font-weight: 700; letter-spacing: .06em; color: #fff; }
+  .form-card::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    margin-top: -5px;
+    background: rgba(17, 19, 26, .95);
+    border-right: 1px solid rgba(255, 255, 255, .16);
+    border-bottom: 1px solid rgba(255, 255, 255, .16);
+    transform: rotate(45deg);
+  }
+
+  .catbox { position: relative; line-height: 0; }
+  /* 麦克风：外层弹出，内层摇摆 —— 两套 transform 分开，互不覆盖 */
+  .mic {
+    position: absolute;
+    right: -8%;
+    bottom: 22%;
+    width: 30%;
+    max-width: 46px;
+    opacity: 0;
+    transform: translate3d(24px, 40px, 0) rotate(72deg) scale(.5);
+    transform-origin: 60% 88%;
+    transition: transform .45s cubic-bezier(.2, 1.55, .4, 1), opacity .2s ease;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .5));
+  }
+  .mic.on { opacity: 1; transform: translate3d(0, 0, 0) rotate(-12deg) scale(1); }
+  .mic svg { display: block; width: 100%; height: auto; }
+  .mic.on svg { animation: mic-sway 1.9s ease-in-out infinite; transform-origin: 50% 92%; }
+  @keyframes mic-sway {
+    0%, 100% { transform: rotate(-3deg); }
+    50% { transform: rotate(4deg); }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap" id="wrap">
+    <div class="catbox">
+      <div class="bubble-anchor" id="bubbleAnchor">
+        <img class="bubble-pic" id="bubblePic" alt="coke 表情包" draggable="false" hidden>
+        <div class="bubble" id="bubble" role="status"></div>
+      </div>
+      <div class="input-anchor" id="inputAnchor" hidden>
+        <div class="input-wrap"><textarea class="chat-input" id="say" rows="1" maxlength="500"></textarea></div>
+      </div>
+      <div class="idle" id="idle">
+        <img class="cat hit" id="cat" alt="我痞吗的猫" draggable="false">
+      </div>
+      <div class="mic" id="mic"></div>
+      <div class="form-anchor" id="formAnchor">
+        <div class="form-card">
+          <img id="formImg" alt="coke 形态" draggable="false">
+          <div class="form-caption" id="formCaption">我痞吗</div>
+        </div>
+      </div>
+    </div>
+    <button class="pill hit" id="bal" type="button">查余额</button>
+  </div>
+  <div class="menu" id="menu" hidden>
+    <button class="menu-item hit chat" id="chat" type="button"><span class="dot"></span>对话</button>
+    <button class="menu-item hit sing" id="sing" type="button"><span class="dot"></span><span id="singLabel">唱歌</span></button>
+    <button class="menu-item hit form" id="form" type="button"><span class="dot"></span>形态展示</button>
+    <button class="menu-item hit outfit" id="outfit" type="button"><span class="dot"></span>自定义装扮</button>
+    <button class="menu-item hit shoot" id="shoot" type="button"><span class="dot"></span>枪击小猫</button>
+  </div>
+
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var size = Math.max(120, Math.min(420, Number(params.get('size')) || 220));
+    var formMs = Math.max(600, Number(params.get('formMs')) || 60000);
+
+    var cat = document.getElementById('cat');
+    var bubble = document.getElementById('bubble');
+    var bubbleAnchor = document.getElementById('bubbleAnchor');
+    var bubblePic = document.getElementById('bubblePic');
+    var inputAnchor = document.getElementById('inputAnchor');
+    var input = document.getElementById('say');
+    var bal = document.getElementById('bal');
+    var menu = document.getElementById('menu');
+    var shootItem = document.getElementById('shoot');
+    var singItem = document.getElementById('sing');
+    var chatItem = document.getElementById('chat');
+    var formItem = document.getElementById('form');
+    var outfitItem = document.getElementById('outfit');
+    var singLabel = document.getElementById('singLabel');
+    var mic = document.getElementById('mic');
+    var formAnchor = document.getElementById('formAnchor');
+    var formImg = document.getElementById('formImg');
+    var formCaption = document.getElementById('formCaption');
+    var FORM_MS = formMs;
+
+    // 自定义形象：主进程推什么就用什么，没有就用包里那张
+    var BASE_CAT = '../../assets/cat.png';
+    if (window.petApi && typeof window.petApi.onSkin === 'function') {
+      window.petApi.onSkin(function (payload) {
+        cat.src = (payload && payload.dataUrl) || BASE_CAT;
+      });
+    }
+
+    mic.innerHTML =
+      '<svg viewBox="0 0 32 66" xmlns="http://www.w3.org/2000/svg">' +
+      '<defs>' +
+      '<linearGradient id="mh" x1="0" y1="0" x2="1" y2="0">' +
+      '<stop offset="0" stop-color="#3a3f4a"/><stop offset=".42" stop-color="#e2e8f2"/>' +
+      '<stop offset=".58" stop-color="#b6bfcd"/><stop offset="1" stop-color="#2b3038"/></linearGradient>' +
+      '<linearGradient id="mb" x1="0" y1="0" x2="1" y2="0">' +
+      '<stop offset="0" stop-color="#1f232a"/><stop offset=".4" stop-color="#8d96a5"/>' +
+      '<stop offset=".62" stop-color="#69717e"/><stop offset="1" stop-color="#191c22"/></linearGradient>' +
+      '</defs>' +
+      '<ellipse cx="16" cy="16" rx="10.5" ry="13.5" fill="url(#mh)"/>' +
+      '<g stroke="#2a2f38" stroke-width="1.3" opacity=".72">' +
+      '<line x1="7.5" y1="10.5" x2="24.5" y2="10.5"/><line x1="6.5" y1="16" x2="25.5" y2="16"/>' +
+      '<line x1="7.5" y1="21.5" x2="24.5" y2="21.5"/></g>' +
+      '<rect x="9.5" y="26" width="13" height="4.5" rx="2.2" fill="#9aa3b2"/>' +
+      '<rect x="13" y="29" width="6" height="27" rx="3" fill="url(#mb)"/>' +
+      '<ellipse cx="16" cy="57" rx="5.4" ry="3.2" fill="#2a2f38"/>' +
+      '</svg>';
+
+    cat.style.height = size + 'px';
+    cat.src = '../../assets/cat.png';
+
+    // ---- 点一下按权重抽一句（合计 100：我痞吗 40%，其余各 10%） ----
+    var VOICES = [
+      { file: 'piqi.wav', text: '我痞吗？', weight: 40, volume: 0.95 },
+      { file: 'miao.wav', text: '喵喵喵', weight: 10, volume: 1 },
+      { file: 'bifeng.wav', text: '避我锋芒', weight: 10 },
+      { file: 'nvwa.wav', text: '约女娲', weight: 10 },
+      { file: 'zhuanzhu.wav', text: '绝对专注', weight: 10 },
+      { file: 'amatelas.wav', text: '阿马特拉斯', weight: 10 },
+      { file: 'shunen.wav', text: '舒嫩', weight: 10 },
+    ];
+    var voicePool = {};
+    function voiceEl(entry) {
+      if (voicePool[entry.file]) return voicePool[entry.file];
+      var el = new Audio('../../assets/' + entry.file);
+      el.preload = 'none';
+      el.volume = typeof entry.volume === 'number' ? entry.volume : 0.9;
+      voicePool[entry.file] = el;
+      return el;
+    }
+    function pickVoice() {
+      var total = 0;
+      for (var i = 0; i < VOICES.length; i += 1) total += VOICES[i].weight;
+      var roll = Math.random() * total;
+      for (var j = 0; j < VOICES.length; j += 1) {
+        roll -= VOICES[j].weight;
+        if (roll < 0) return VOICES[j];
+      }
+      return VOICES[0];
+    }
+
+    var shot = new Audio('../../assets/shot.wav');
+    shot.preload = 'auto';
+    shot.volume = 1;
+    var singA = new Audio('../../assets/sing1.m4a'); // 80%
+    singA.preload = 'none';
+    singA.volume = 0.9;
+    var singB = new Audio('../../assets/sing2.m4a'); // 20%
+    singB.preload = 'none';
+    singB.volume = 0.9;
+    var singing = null;
+
+    function play(audio, volume) {
+      try {
+        if (typeof volume === 'number') audio.volume = volume;
+        audio.currentTime = 0;
+        var p = audio.play();
+        if (p && typeof p.catch === 'function') p.catch(function () {});
+      } catch (_) {}
+    }
+
+    // ---- 唱歌：掏麦克风 + 80%/20% 两首 ----
+    function updateMenuLabels() {
+      singLabel.textContent = singing ? '停止唱歌' : '唱歌';
+    }
+    function stopSing() {
+      if (singing) {
+        try { singing.pause(); singing.currentTime = 0; } catch (_) {}
+        singing = null;
+      }
+      mic.classList.remove('on');
+      updateMenuLabels();
+    }
+    function startSing() {
+      stopSing();
+      var track = Math.random() < 0.8 ? singA : singB;
+      singing = track;
+      mic.classList.add('on');
+      say('🎤 我唱一首', { ms: 1800 });
+      play(track);
+      track.onended = function () { if (singing === track) stopSing(); };
+      updateMenuLabels();
+    }
+    function toggleSing() {
+      if (dead) return;
+      if (singing) stopSing();
+      else startSing();
+    }
+
+    // ---- 气泡 ----
+    var bubbleTimer = 0;
+    function say(text, opts) {
+      // 形态展示卡片占着头顶时不弹普通气泡
+      if (formOn) return;
+      bubble.textContent = text;
+      bubble.classList.toggle('err', !!(opts && opts.err));
+      bubble.classList.add('show');
+      clearTimeout(bubbleTimer);
+      bubbleTimer = setTimeout(function () {
+        bubble.classList.remove('show');
+        bubblePic.hidden = true;
+      }, (opts && opts.ms) || 1600);
+    }
+
+    // ---- 对话：头顶输入框（照 dsh-pet 的形式），回答进气泡，表情包可选 ----
+    var chatHistory = [];
+    var chatBusy = false;
+    var lastSticker = null;
+
+    function autosize() {
+      input.style.height = 'auto';
+      input.style.height = Math.max(30, Math.min(input.scrollHeight, 96)) + 'px';
+      input.parentNode.style.width = Math.max(180, Math.min(240, 40 + input.value.length * 8)) + 'px';
+    }
+
+    function openChat() {
+      inputAnchor.hidden = false;
+      bubble.classList.remove('show');
+      bubblePic.hidden = true;
+      autosize();
+      if (window.petApi && typeof window.petApi.typing === 'function') window.petApi.typing(true);
+      setTimeout(function () {
+        try { input.focus(); } catch (_) {}
+      }, 0);
+    }
+
+    function closeChat() {
+      inputAnchor.hidden = true;
+      input.value = '';
+      chatBusy = false;
+      if (window.petApi && typeof window.petApi.typing === 'function') window.petApi.typing(false);
+      try { input.blur(); } catch (_) {}
+    }
+
+    function sayWithSticker(text, stickerFile, ms) {
+      if (stickerFile) {
+        bubblePic.src = '../../assets/' + stickerFile;
+        bubblePic.hidden = false;
+      } else {
+        bubblePic.hidden = true;
+      }
+      say(text, { ms: ms });
+    }
+
+    function sendChat() {
+      var text = String(input.value || '').trim();
+      if (!text || chatBusy) return;
+      if (!window.petApi || typeof window.petApi.chat !== 'function') {
+        sayWithSticker('对话失败：没有连上宿主', null, 4000);
+        return;
+      }
+      chatBusy = true;
+      input.value = '';
+      autosize();
+      closeChat();
+      sayWithSticker('…', null, 20000);
+      var history = chatHistory.slice(-6);
+      window.petApi
+        .chat(text, history, lastSticker)
+        .then(function (data) {
+          if (!data || data.ok !== true || !data.text) {
+            // 老版宿主没有 /chat 这个 POST 路由，只会回一个空对象
+            throw new Error((data && data.message) || '宿主还是旧版，重启 DSH 就好');
+          }
+          chatHistory.push({ role: 'user', text: text });
+          chatHistory.push({ role: 'cat', text: data.text });
+          if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+          lastSticker = data.sticker || null;
+          sayWithSticker(data.text, data.sticker || null, 9000);
+        })
+        .catch(function (error) {
+          sayWithSticker('对话失败：' + (error && error.message ? error.message : '未知原因'), null, 5000);
+        })
+        .then(function () {
+          chatBusy = false;
+        });
+    }
+
+    input.addEventListener('input', autosize);
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        event.stopPropagation();
+        sendChat();
+      } else if (event.key === 'Escape') {
+        event.stopPropagation();
+        closeChat();
+      }
+    });
+    document.addEventListener('pointerdown', function (event) {
+      if (inputAnchor.hidden) return;
+      if (inputAnchor.contains(event.target)) return;
+      closeChat();
+    }, true);
+
+    // ---- 形态展示：头顶卡片随一张 coke 形态图 + 「我痞吗」语音，FORM_MS 后自动收 ----
+    var FORMS = [];
+    for (var fi = 1; fi <= 18; fi += 1) {
+      FORMS.push('coke-' + (fi < 10 ? '0' + fi : String(fi)) + '.jpg');
+    }
+    var formOn = false;
+    var formTimer = 0;
+
+    function hideForm() {
+      if (formTimer) clearTimeout(formTimer);
+      formTimer = 0;
+      if (!formOn) return;
+      formOn = false;
+      formAnchor.classList.remove('on');
+      if (window.petApi && typeof window.petApi.formOpen === 'function') window.petApi.formOpen(false);
+    }
+
+    function showForm() {
+      if (dead) return;
+      // 卡片占头顶，先把正在显示的台词气泡收掉
+      if (bubbleTimer) clearTimeout(bubbleTimer);
+      bubbleTimer = 0;
+      bubble.classList.remove('show');
+      var file = FORMS[Math.floor(Math.random() * FORMS.length)];
+      formImg.src = '../../assets/' + file;
+      formCaption.textContent = '我痞吗';
+      formAnchor.classList.add('on');
+      formOn = true;
+      clearTimeout(formTimer);
+      formTimer = setTimeout(hideForm, FORM_MS);
+      play(voiceEl(VOICES[0]));
+      // 卡片比窗口高，主进程收到后会临时把窗口往上长一截
+      if (window.petApi && typeof window.petApi.formOpen === 'function') window.petApi.formOpen(true);
+    }
+
+    // ---- Q 弹 ----
+    var y = 0, vy = 0, sx = 1, vsx = 0, raf = 0, last = 0, dead = false;
+    function frame(now) {
+      var dt = Math.min(Math.max((now - last) / 1000, 0), 1 / 30);
+      last = now;
+      vy += 3000 * dt;
+      y += vy * dt;
+      if (y > 0) { y = 0; vy = -vy * 0.34; if (Math.abs(vy) < 62) vy = 0; }
+      var ax = -330 * (sx - 1) - 12.5 * vsx;
+      vsx += ax * dt;
+      sx += vsx * dt;
+      var stretch = 1 + Math.min(Math.abs(vy) / 3400, 0.1);
+      var sy = (1 / sx) * stretch;
+      cat.style.transform = 'translate3d(0,' + y.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')';
+      // 气泡/形态卡片跟着脑袋走：跳跃位移 + 拉伸带来的高度变化（transform-origin 在底部）
+      document.getElementById('wrap').style.setProperty('--cc-hop', (y - (sy - 1) * size).toFixed(2) + 'px');
+      if (y === 0 && vy === 0 && Math.abs(sx - 1) < 0.0015 && Math.abs(vsx) < 0.02) {
+        cat.style.transform = '';
+        document.getElementById('wrap').style.setProperty('--cc-hop', '0px');
+        raf = 0; y = 0; vy = 0; sx = 1; vsx = 0;
+        return;
+      }
+      raf = requestAnimationFrame(frame);
+    }
+    function kick() {
+      y = 0; vy = -470; sx = 1.22; vsx = 0;
+      if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); }
+    }
+
+    // ---- 指针穿透：只有猫 / 药丸 / 菜单吃鼠标 ----
+    var hovering = false;
+    function setHover(next) {
+      if (next === hovering) return;
+      hovering = next;
+      if (window.petApi) window.petApi.setHover(next);
+    }
+    window.addEventListener('mousemove', function (event) {
+      var el = document.elementFromPoint(event.clientX, event.clientY);
+      setHover(!!(el && el.closest && el.closest('.hit')));
+    });
+    document.addEventListener('mouseleave', function () { setHover(false); });
+
+    // ---- 拖动窗口 + 点击 ----
+    var drag = null;
+    cat.addEventListener('pointerdown', function (event) {
+      if (dead || event.button !== 0) return;
+      drag = { lastX: event.screenX, lastY: event.screenY, moved: false };
+      cat.classList.add('dragging');
+      try { cat.setPointerCapture(event.pointerId); } catch (_) {}
+      event.preventDefault();
+    });
+    cat.addEventListener('pointermove', function (event) {
+      if (!drag) return;
+      var dx = event.screenX - drag.lastX;
+      var dy = event.screenY - drag.lastY;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
+      if (!drag.moved) return;
+      drag.lastX = event.screenX;
+      drag.lastY = event.screenY;
+      if (window.petApi) window.petApi.moveBy(dx, dy);
+    });
+    cat.addEventListener('pointerup', function () {
+      if (!drag) return;
+      var wasDragging = drag.moved;
+      drag = null;
+      cat.classList.remove('dragging');
+      if (wasDragging) {
+        if (window.petApi) window.petApi.moveEnd();
+        return;
+      }
+      if (dead) return;
+      kick();
+      var entry = pickVoice();
+      play(voiceEl(entry));
+      say(entry.text);
+    });
+
+    // ---- 右键菜单 ----
+    function closeMenu() { menu.hidden = true; }
+    cat.addEventListener('contextmenu', function (event) {
+      event.preventDefault();
+      if (dead) return;
+      updateMenuLabels();
+      menu.hidden = false;
+      var rect = menu.getBoundingClientRect();
+      var left = Math.min(Math.max(4, event.clientX), Math.max(4, window.innerWidth - rect.width - 4));
+      var top = Math.min(Math.max(4, event.clientY), Math.max(4, window.innerHeight - rect.height - 4));
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+    });
+    window.addEventListener('pointerdown', function (event) {
+      if (menu.hidden) return;
+      if (event.target === menu || menu.contains(event.target)) return;
+      closeMenu();
+    }, true);
+    window.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') closeMenu();
+    });
+
+    singItem.addEventListener('click', function () {
+      closeMenu();
+      toggleSing();
+    });
+
+    chatItem.addEventListener('click', function () {
+      closeMenu();
+      openChat();
+    });
+
+    formItem.addEventListener('click', function () {
+      closeMenu();
+      showForm();
+    });
+
+    outfitItem.addEventListener('click', function () {
+      closeMenu();
+      if (window.petApi && typeof window.petApi.openOutfit === 'function') window.petApi.openOutfit();
+    });
+
+    shootItem.addEventListener('click', function () {
+      if (dead) return;
+      dead = true;
+      closeMenu();
+      stopSing();
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      play(shot, 0.9);
+      cat.style.transition = 'transform .5s cubic-bezier(.3,.9,.4,1), opacity .75s ease .15s';
+      cat.style.transformOrigin = '50% 85%';
+      cat.style.transform = 'translate3d(0, 10px, 0) rotate(74deg)';
+      cat.style.opacity = '0';
+      bal.style.transition = 'opacity .35s ease';
+      bal.style.opacity = '0';
+      bubble.classList.remove('show');
+      // 「形态展示」卡片也挂在头顶，一起收掉（同时把窗口缩回原高度）
+      hideForm();
+      formAnchor.style.transition = 'opacity .25s ease';
+      formAnchor.style.opacity = '0';
+      setTimeout(function () {
+        if (window.petApi) { window.petApi.shot(); window.petApi.quit(); }
+      }, 900);
+    });
+
+    // ---- 余额 ----
+    var cache = null;
+    var cacheAt = 0;
+    bal.addEventListener('click', function () {
+      if (dead) return;
+      if (cache && Date.now() - cacheAt < 60000) {
+        showBalance(cache);
+        return;
+      }
+      bal.textContent = '查询中…';
+      bal.dataset.state = 'loading';
+      if (!window.petApi) {
+        showBalance({ ok: false, message: '桌面窗口没有接到宿主' });
+        return;
+      }
+      window.petApi.balance().then(function (result) {
+        cache = result;
+        cacheAt = Date.now();
+        showBalance(result);
+      }).catch(function (error) {
+        showBalance({ ok: false, message: '余额查询失败：' + (error && error.message) });
+      });
+    });
+
+    function showBalance(result) {
+      if (result && result.ok) {
+        bal.dataset.state = 'ok';
+        bal.textContent = '余额 ' + result.amount;
+        say('余额 ' + result.amount, { ms: 2600 });
+      } else {
+        bal.dataset.state = 'error';
+        bal.textContent = '余额查不了';
+        say((result && result.message) || '余额查询失败', { ms: 3200, err: true });
+      }
+    }
+  })();
+</script>
+</body>
+</html>
